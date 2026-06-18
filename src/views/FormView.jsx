@@ -37,10 +37,14 @@ const estadoInicial = {
 
 /**
  * Formulario de registro de equipos.
- * Al montarse, solicita a Supabase un correlativo único atómico.
+ * Al montarse consulta un PREVIEW del próximo correlativo (solo visual).
+ * El número REAL se asigna atómicamente al guardar, dentro de la RPC
+ * `insert_equipo`, que llama a nextval() e inserta la fila en una
+ * sola transacción. Esto evita huecos en la numeración.
  * Props:
  *  - bodegaInicial: string
- *  - onGuardar(equipo): async
+ *  - onGuardar(equipo): async  → devuelve la fila insertada con el
+ *                                correlativo real asignado por la DB
  */
 export default function FormView({ bodegaInicial = '', onGuardar }) {
   const toast = useToast()
@@ -55,9 +59,10 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
   const [estadoCorrelativo, setEstadoCorrelativo] = useState('cargando') // 'cargando' | 'listo' | 'error'
 
   // ------------------------------------------------------------------
-  // Solicitar correlativo único al abrir el formulario.
-  // Postgres nextval() es atómico: garantiza que dos llamadas simultáneas
-  // devuelvan números distintos.
+  // Preview del próximo correlativo: consultamos el máximo actual en la DB.
+  // Esto es solo una PISTA VISUAL — el número REAL se asigna al guardar
+  // (atómicamente vía la función RPC insert_equipo), por lo que dos
+  // usuarios viendo el mismo preview no entran en conflicto.
   // ------------------------------------------------------------------
   useEffect(() => {
     let cancelado = false
@@ -66,15 +71,21 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
         setEstadoCorrelativo('error')
         return
       }
-      const { data, error } = await supabase.rpc('next_equipo_correlativo')
+      const { data, error } = await supabase
+        .from('equipos')
+        .select('correlativo')
+        .order('correlativo', { ascending: false })
+        .limit(1)
+        .maybeSingle()
       if (cancelado) return
       if (error) {
-        console.error('Error al obtener correlativo:', error)
+        console.error('Error al obtener preview:', error)
         setEstadoCorrelativo('error')
-        toast.error('No se pudo asignar correlativo')
+        toast.error('No se pudo cargar el preview del correlativo')
         return
       }
-      setForm((prev) => ({ ...prev, correlativo: data }))
+      const preview = (data?.correlativo ?? 0) + 1
+      setForm((prev) => ({ ...prev, correlativo: preview }))
       setEstadoCorrelativo('listo')
     }
     obtener()
@@ -112,51 +123,55 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
     })
   }
 
-  const handleLimpiar = () => {
+  /**
+   * Limpia el formulario. `ultimoGuardado` es el correlativo REAL del
+   * registro que acabamos de guardar (lo entrega la RPC). Con ese dato
+   * calculamos el siguiente preview localmente, sin volver a consultar
+   * la DB. Si se llama sin argumento (botón "Limpiar" sin guardar antes),
+   * usa el preview actual como base.
+   */
+  const handleLimpiar = (ultimoGuardado) => {
+    const siguiente = (ultimoGuardado ?? form.correlativo ?? 0) + 1
     setForm({
       ...estadoInicial,
       bodega: bodegaInicial && bodegaInicial !== 'todas' ? bodegaInicial : '',
+      correlativo: siguiente,
     })
     setErrores({})
-    // Re-solicitar correlativo (el actual queda "quemado" en la sequence).
-    setEstadoCorrelativo('cargando')
-    if (supabase) {
-      supabase.rpc('next_equipo_correlativo').then(({ data, error }) => {
-        if (error) {
-          setEstadoCorrelativo('error')
-          return
-        }
-        setForm((prev) => ({ ...prev, correlativo: data }))
-        setEstadoCorrelativo('listo')
-      })
-    }
+    setEstadoCorrelativo('listo')
   }
 
-  const reintentarCorrelativo = async () => {
+  const reintentarPreview = async () => {
     setEstadoCorrelativo('cargando')
     if (!supabase) {
       setEstadoCorrelativo('error')
       return
     }
-    const { data, error } = await supabase.rpc('next_equipo_correlativo')
+    const { data, error } = await supabase
+      .from('equipos')
+      .select('correlativo')
+      .order('correlativo', { ascending: false })
+      .limit(1)
+      .maybeSingle()
     if (error) {
       setEstadoCorrelativo('error')
-      toast.error('No se pudo reasignar correlativo')
+      toast.error('No se pudo reintentar el preview del correlativo')
       return
     }
-    setForm((prev) => ({ ...prev, correlativo: data }))
+    const preview = (data?.correlativo ?? 0) + 1
+    setForm((prev) => ({ ...prev, correlativo: preview }))
     setEstadoCorrelativo('listo')
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.correlativo) {
-      toast.error('Aún no se asignó un correlativo. Reintenta.')
-      return
-    }
 
+    // El correlativo del preview NO se envía: la RPC lo asigna
+    // atómicamente al hacer el insert. (Lo seteamos a undefined para
+    // que JSON.stringify lo omita al serializar el payload.)
     const payload = {
       ...form,
+      correlativo: undefined,
       elementos_faltantes: (form.elementos_faltantes ?? []).join(', '),
       horometro:
         form.horometro === '' || form.horometro === null ? null : Number(form.horometro),
@@ -175,18 +190,16 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
 
     setGuardando(true)
     try {
-      await onGuardar(payload)
-      toast.success(`Registro #${String(form.correlativo).padStart(4, '0')} guardado`)
-      handleLimpiar()
+      // La RPC devuelve la fila con el correlativo REAL. Si en el
+      // entretanto otro usuario guardó, este número puede diferir del
+      // preview que mostraba la pantalla — el toast confirma el real.
+      const resultado = await onGuardar(payload)
+      const correlativoReal = resultado?.correlativo ?? form.correlativo
+      toast.success(`Registro #${String(correlativoReal).padStart(4, '0')} guardado`)
+      handleLimpiar(correlativoReal)
     } catch (err) {
       console.error(err)
-      // Detectar violación de unicidad (por si dos clientes recibieran el mismo número).
-      if (err?.message?.includes('correlativo_key') || err?.message?.includes('duplicate')) {
-        toast.error('Conflicto de correlativo. Reasignando…')
-        await reintentarCorrelativo()
-      } else {
-        toast.error(err?.message ?? 'Error al guardar el equipo')
-      }
+      toast.error(err?.message ?? 'Error al guardar el equipo')
     } finally {
       setGuardando(false)
     }
@@ -222,15 +235,15 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
           )}
           {estadoCorrelativo === 'listo' && (
             <p className="mt-0.5 text-[0.78rem] text-slate-600">
-              Este número es permanente y único en todo el sistema.
+              Vista previa. El número real se asigna al guardar.
             </p>
           )}
           {estadoCorrelativo === 'error' && (
             <p className="mt-1 text-sm text-red-700">
-              No se pudo asignar un correlativo.
+              No se pudo cargar el preview del correlativo.
               <button
                 type="button"
-                onClick={reintentarCorrelativo}
+                onClick={reintentarPreview}
                 className="ml-2 rounded-md bg-red-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-red-700"
               >
                 Reintentar
@@ -526,7 +539,7 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
           </button>
           <button
             type="submit"
-            disabled={guardando || estadoCorrelativo !== 'listo'}
+            disabled={guardando}
             className="flex-1 rounded-[10px] bg-blue-600 px-4 py-3.5 text-base font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.3)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {guardando ? 'Guardando…' : 'Guardar registro'}

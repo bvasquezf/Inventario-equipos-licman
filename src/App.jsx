@@ -92,11 +92,10 @@ export default function App() {
   // Handlers -----------------------------------------------------------
   const guardarEquipo = useCallback(async (equipo) => {
     if (!supabase) throw new Error('No hay credenciales de Supabase configuradas.')
-    const { data, error } = await supabase
-      .from('equipos')
-      .insert(equipo)
-      .select()
-      .single()
+    // La función RPC `insert_equipo` asigna el correlativo atómicamente
+    // al insertar (vía nextval() dentro de la misma transacción). Esto
+    // evita huecos cuando alguien abre el form y sale sin guardar.
+    const { data, error } = await supabase.rpc('insert_equipo', { equipo_data: equipo })
     if (error) throw new Error(error.message)
     if (data) {
       setEquipos((prev) => (prev.some((e) => e.id === data.id) ? prev : [data, ...prev]))
