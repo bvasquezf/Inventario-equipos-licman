@@ -139,26 +139,26 @@ export default function App() {
           </div>
         )}
 
-        {tabActiva === 'form' && (
+        {/* Las vistas se montan una sola vez y se ocultan con `hidden`.
+            Así el correlativo de FormView no se "quema" al cambiar de pestaña. */}
+        <div hidden={tabActiva !== 'form'}>
           <FormView bodegaInicial={bodegaFiltro} onGuardar={guardarEquipo} />
-        )}
+        </div>
 
-        {tabActiva === 'list' && (
-          <div className="space-y-3">
-            {cargando && (
-              <p className="text-sm text-slate-500">Cargando inventario…</p>
-            )}
-            <ListView
-              equipos={equipos}
-              bodegaFiltro={bodegaFiltro}
-              onEliminar={eliminarEquipo}
-            />
-          </div>
-        )}
+        <div hidden={tabActiva !== 'list'} className="space-y-3">
+          {cargando && (
+            <p className="text-sm text-slate-500">Cargando inventario…</p>
+          )}
+          <ListView
+            equipos={equipos}
+            bodegaFiltro={bodegaFiltro}
+            onEliminar={eliminarEquipo}
+          />
+        </div>
 
-        {tabActiva === 'export' && (
+        <div hidden={tabActiva !== 'export'}>
           <ExportView equipos={equipos} bodegaFiltro={bodegaFiltro} />
-        )}
+        </div>
       </main>
     </div>
   )
