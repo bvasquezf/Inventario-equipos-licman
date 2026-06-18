@@ -3,13 +3,14 @@ import { EXCEL_HEADERS, EXCEL_COLUMN_ORDER } from './constants'
 
 // Anchos sugeridos por columna (caracteres). Hoja "Inventario".
 const COLUMN_WIDTHS = {
+  correlativo: 12,
   bodega: 14,
   numero_interno: 14,
   numero_serie: 18,
   marca: 14,
   modelo: 16,
   ubicacion_actual: 20,
-  estado_operacional: 14,
+  estado_operacional: 18,
   horometro: 12,
   elementos_faltantes: 28,
   observaciones: 32,
@@ -23,6 +24,9 @@ function formatearFila(equipo) {
     const valor = equipo[campo]
     if (campo === 'foto_enviada') {
       return valor ? 'Sí' : 'No'
+    }
+    if (campo === 'correlativo') {
+      return valor ?? ''
     }
     if (campo === 'created_at' && valor) {
       // Mantener formato ISO; Excel lo interpreta automáticamente.

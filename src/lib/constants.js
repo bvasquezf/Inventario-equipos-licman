@@ -37,6 +37,7 @@ export const TABS = [
 
 // Mapeo de campos de la base de datos a headers en español para Excel.
 export const EXCEL_HEADERS = {
+  correlativo: 'Correlativo',
   bodega: 'Bodega',
   numero_interno: 'N° Interno',
   numero_serie: 'N° Serie',
@@ -52,8 +53,9 @@ export const EXCEL_HEADERS = {
   created_at: 'Fecha Registro',
 }
 
-// Orden de columnas en el Excel.
+// Orden de columnas en el Excel (correlativo primero).
 export const EXCEL_COLUMN_ORDER = [
+  'correlativo',
   'bodega',
   'numero_interno',
   'numero_serie',

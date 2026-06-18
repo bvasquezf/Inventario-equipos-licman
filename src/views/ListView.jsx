@@ -121,17 +121,17 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
           </div>
         ) : (
           <div className="mt-4 space-y-2">
-            {equiposFiltrados.map((e, idx) => {
+            {equiposFiltrados.map((e) => {
               const faltantes = parseFaltantes(e.elementos_faltantes)
-              const correlativo = equiposFiltrados.length - idx // 1-based, del más nuevo al más viejo
+              const correlativo = e.correlativo ?? '—'
               return (
                 <article
                   key={e.id}
                   className="group grid grid-cols-[60px_1fr] items-start gap-3 rounded-[10px] border border-slate-200 bg-white p-3.5 transition hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(16,24,40,0.06)] sm:p-4"
                 >
                   <div className="rounded-[10px] bg-slate-900 px-1 py-2 text-center font-extrabold text-white">
-                    <span className="block text-[1.3rem] leading-none">
-                      {String(correlativo).padStart(2, '0')}
+                    <span className="block text-[1.2rem] leading-none tabular-nums">
+                      {String(correlativo).padStart(4, '0')}
                     </span>
                     <span className="mt-0.5 block text-[0.55rem] uppercase tracking-wider text-slate-400">
                       N°
