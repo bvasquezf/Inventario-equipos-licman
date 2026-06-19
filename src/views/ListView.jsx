@@ -9,6 +9,7 @@ const CAMPOS_BUSQUEDA = [
   'numero_serie',
   'marca',
   'modelo',
+  'tipo_equipo',
   'responsable',
   'ubicacion_actual',
 ]
@@ -212,6 +213,11 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
                       <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[0.7rem] font-bold text-sky-800">
                         {e.bodega}
                       </span>
+                      {e.tipo_equipo && (
+                        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[0.7rem] font-bold text-violet-800">
+                          {e.tipo_equipo}
+                        </span>
+                      )}
                       {esDuplicado && (
                         <span
                           className="rounded-full bg-red-100 px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide text-red-700"

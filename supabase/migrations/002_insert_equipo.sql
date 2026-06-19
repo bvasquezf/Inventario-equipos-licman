@@ -51,6 +51,7 @@ begin
   insert into public.equipos (
     correlativo,
     bodega,
+    tipo_equipo,
     numero_interno,
     numero_serie,
     marca,
@@ -66,6 +67,7 @@ begin
   values (
     next_val,
     equipo_data->>'bodega',
+    equipo_data->>'tipo_equipo',
     equipo_data->>'numero_interno',
     equipo_data->>'numero_serie',
     equipo_data->>'marca',

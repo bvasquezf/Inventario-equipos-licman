@@ -3,6 +3,7 @@ import {
   BODEGAS,
   ESTADOS,
   ELEMENTOS_FALTANTES,
+  TIPOS_EQUIPO,
   PHOTO_EMAIL,
 } from '../lib/constants'
 import { validarEquipo } from '../lib/validacion'
@@ -21,6 +22,7 @@ const clasesInput =
 
 const estadoInicial = {
   bodega: '',
+  tipo_equipo: '',
   numero_interno: '',
   numero_serie: '',
   marca: '',
@@ -383,6 +385,31 @@ export default function FormView({ bodega = '', onGuardar }) {
                 </p>
               )}
             </label>
+            <label className="block text-[0.88rem] font-semibold text-slate-900">
+              Tipo de equipo
+              <select
+                name="tipo_equipo"
+                value={form.tipo_equipo}
+                onChange={handleChange}
+                ref={(el) => (refs.current.tipo_equipo = el)}
+                className={clasesInput}
+              >
+                <option value="">— Selecciona un tipo —</option>
+                {TIPOS_EQUIPO.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              {errores.tipo_equipo && (
+                <p className="mt-1 text-xs font-medium text-red-600">
+                  {errores.tipo_equipo}
+                </p>
+              )}
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-[0.88rem] font-semibold text-slate-900">
               Número de serie
               <input

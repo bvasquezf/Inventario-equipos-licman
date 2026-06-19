@@ -5,6 +5,7 @@ import { EXCEL_HEADERS, EXCEL_COLUMN_ORDER } from './constants'
 const COLUMN_WIDTHS = {
   correlativo: 12,
   bodega: 14,
+  tipo_equipo: 26,
   numero_interno: 14,
   numero_serie: 18,
   marca: 14,

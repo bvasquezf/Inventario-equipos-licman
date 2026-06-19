@@ -4,6 +4,20 @@ export const BODEGAS = ['Antillanca', 'Cordillera', 'Renca']
 // Estados operacionales posibles para un equipo.
 export const ESTADOS = ['Operativo', 'Operativo con observaciones', 'Inoperativo']
 
+// Tipos de equipo (maquinaria) disponibles en el inventario.
+export const TIPOS_EQUIPO = [
+  'Apilador retract',
+  'Apilador pedestre',
+  'Grúa horquilla eléctrica',
+  'Grúa horquilla a gas',
+  'Traspaleta eléctrica',
+  'Order picker',
+  'Carro remolque',
+  'Alza hombre unipersonal',
+  'Apilador retractil multidireccional',
+  'Recoge pedidos horizontal',
+]
+
 // Etiqueta corta para mostrar en chips/badges.
 export const ESTADO_CHIP = {
   Operativo: 'Operativo',
@@ -39,6 +53,7 @@ export const TABS = [
 export const EXCEL_HEADERS = {
   correlativo: 'Correlativo',
   bodega: 'Bodega',
+  tipo_equipo: 'Tipo de Equipo',
   numero_interno: 'N° Interno',
   numero_serie: 'N° Serie',
   marca: 'Marca',
@@ -57,6 +72,7 @@ export const EXCEL_HEADERS = {
 export const EXCEL_COLUMN_ORDER = [
   'correlativo',
   'bodega',
+  'tipo_equipo',
   'numero_interno',
   'numero_serie',
   'marca',

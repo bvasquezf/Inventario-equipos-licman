@@ -1,8 +1,9 @@
-import { BODEGAS, ESTADOS } from './constants'
+import { BODEGAS, ESTADOS, TIPOS_EQUIPO } from './constants'
 
 // Campos requeridos para registrar un equipo.
 const CAMPOS_REQUERIDOS = [
   'bodega',
+  'tipo_equipo',
   'numero_interno',
   'numero_serie',
   'marca',
@@ -29,6 +30,10 @@ export function validarEquipo(data) {
     errores.bodega = 'Bodega no válida'
   }
 
+  if (data.tipo_equipo && !TIPOS_EQUIPO.includes(data.tipo_equipo)) {
+    errores.tipo_equipo = 'Tipo de equipo no válido'
+  }
+
   if (data.estado_operacional && !ESTADOS.includes(data.estado_operacional)) {
     errores.estado_operacional = 'Estado no válido'
   }
@@ -46,6 +51,7 @@ export function validarEquipo(data) {
 // Estado inicial del formulario (todos los campos vacíos).
 export const equipoVacio = {
   bodega: '',
+  tipo_equipo: '',
   numero_interno: '',
   numero_serie: '',
   marca: '',
