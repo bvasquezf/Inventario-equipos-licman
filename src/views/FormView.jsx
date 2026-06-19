@@ -54,7 +54,7 @@ const estadoInicial = {
  *  - onGuardar(equipo): async  → devuelve la fila insertada con el
  *                                correlativo real asignado por la DB
  */
-export default function FormView({ bodega = '', onGuardar }) {
+export default function FormView({ bodega = '', equipos = [], onGuardar }) {
   const toast = useToast()
   const refs = useRef({})
 
@@ -69,6 +69,32 @@ export default function FormView({ bodega = '', onGuardar }) {
   const [errores, setErrores] = useState({})
   const [guardando, setGuardando] = useState(false)
   const [estadoCorrelativo, setEstadoCorrelativo] = useState('cargando') // 'cargando' | 'listo' | 'error'
+
+  // Set de N° internos ya registrados POR BODEGA (excluyendo papelera).
+  // Sirve para avisar en vivo al tipear el N° interno: si ya existe
+  // en la bodega actual, marcamos el input en rojo. No bloqueamos el
+  // submit porque puede haber casos legítimos (p.ej. dos apiladores
+  // con mismo número por error de rotulación), pero alertamos para
+  // que el operador confirme.
+  const numeroInternoTomado = useMemo(() => {
+    const set = new Set()
+    for (const e of equipos) {
+      if (e.deleted_at) continue
+      if (e.numero_interno && e.bodega) {
+        set.add(`${e.bodega}|${e.numero_interno}`)
+      }
+    }
+    return set
+  }, [equipos])
+
+  const duplicadoDetectado = useMemo(() => {
+    const ni = form.numero_interno.trim()
+    if (!ni || !bodegaValida) return null
+    const key = `${bodega}|${ni}`
+    return numeroInternoTomado.has(key)
+      ? { key, ni, bodega }
+      : null
+  }, [form.numero_interno, bodega, bodegaValida, numeroInternoTomado])
 
   // Sincronizar form.bodega con la prop `bodega` cada vez que el
   // usuario cambia la selección en el header. Así el form siempre
@@ -377,8 +403,23 @@ export default function FormView({ bodega = '', onGuardar }) {
                 onFocus={handleFocusPreview}
                 ref={(el) => (refs.current.numero_interno = el)}
                 placeholder="Ej. INT-0421"
-                className={clasesInput}
+                aria-invalid={Boolean(duplicadoDetectado)}
+                className={`${clasesInput} ${
+                  duplicadoDetectado
+                    ? 'border-red-500 focus:border-red-600 focus:ring-red-600/15'
+                    : ''
+                }`}
               />
+              {duplicadoDetectado && !errores.numero_interno && (
+                <p className="mt-1 flex items-start gap-1 text-xs font-semibold text-red-600">
+                  <span aria-hidden>⚠</span>
+                  <span>
+                    Este N° interno ya está registrado en{' '}
+                    <strong>{duplicadoDetectado.bodega}</strong>. Si es un
+                    equipo distinto, revisá la numeración.
+                  </span>
+                </p>
+              )}
               {errores.numero_interno && (
                 <p className="mt-1 text-xs font-medium text-red-600">
                   {errores.numero_interno}

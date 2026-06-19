@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { BODEGAS } from '../lib/constants'
 import EstadoBadge from '../components/EstadoBadge'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MovimientoDialog from '../components/MovimientoDialog'
+import MovimientoHistorialModal from '../components/MovimientoHistorialModal'
 import { useToast } from '../context/ToastContext'
 
 const CAMPOS_BUSQUEDA = [
@@ -30,6 +32,21 @@ function formatearFecha(iso) {
   }
 }
 
+// Fecha corta sin hora (para líneas secundarias tipo "movido el 15/06").
+function formatearFechaCorta(iso) {
+  if (!iso) return ''
+  try {
+    const d = new Date(iso)
+    return d.toLocaleDateString('es-CL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
 function parseFaltantes(valor) {
   if (!valor) return []
   // jsonb array (Supabase lo deserializa como array JS).
@@ -41,36 +58,74 @@ function parseFaltantes(valor) {
     .filter(Boolean)
 }
 
-export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
+export default function ListView({ equipos, bodegaFiltro, onEliminar, onRegistrarMovimiento }) {
   const toast = useToast()
   const [busqueda, setBusqueda] = useState('')
   const [filtroBodega, setFiltroBodega] = useState(bodegaFiltro || 'todas')
   const [confirmId, setConfirmId] = useState(null)
   const [soloDuplicados, setSoloDuplicados] = useState(false)
+  const [filtroRapido, setFiltroRapido] = useState('todos')
+  const [movimientoEquipo, setMovimientoEquipo] = useState(null)
+  const [historialEquipo, setHistorialEquipo] = useState(null)
+
+  // Equipos visibles (excluir papelera). La papelera tiene su propia
+  // vista, así que acá solo mostramos los activos.
+  const equiposActivos = useMemo(
+    () => equipos.filter((e) => !e.deleted_at),
+    [equipos],
+  )
+
+  // Conteos por filtro rápido sobre el universo ya filtrado por bodega.
+  // Los chips muestran números que cambian con `filtroBodega`.
+  const conteosFiltros = useMemo(() => {
+    const base =
+      filtroBodega === 'todas'
+        ? equiposActivos
+        : equiposActivos.filter((e) => e.bodega === filtroBodega)
+    return {
+      todos: base.length,
+      operativos: base.filter((e) => e.estado_operacional === 'Operativo').length,
+      inoperativos: base.filter((e) => e.estado_operacional === 'Inoperativo').length,
+      con_faltantes: base.filter((e) => {
+        const f = parseFaltantes(e.elementos_faltantes)
+        return f.length > 0
+      }).length,
+      sin_foto: base.filter((e) => !e.foto_enviada).length,
+    }
+  }, [equiposActivos, filtroBodega])
 
   // Detectar N° interno repetido POR BODEGA. Cada bodega tiene su
   // propia numeración, así que el mismo N° interno en bodegas
   // distintas NO se considera duplicado.
   // Estructura: Set de claves "bodega|numero_interno" con count > 1.
+  // Solo considera equipos activos (no los de la papelera).
   const duplicados = useMemo(() => {
     const counts = {}
-    for (const e of equipos) {
+    for (const e of equiposActivos) {
       if (e.numero_interno && e.bodega) {
         const key = `${e.bodega}|${e.numero_interno}`
         counts[key] = (counts[key] || 0) + 1
       }
     }
     return new Set(Object.keys(counts).filter((k) => counts[k] > 1))
-  }, [equipos])
+  }, [equiposActivos])
 
   const equiposFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()
-    return equipos.filter((e) => {
+    return equiposActivos.filter((e) => {
       if (filtroBodega !== 'todas' && e.bodega !== filtroBodega) return false
       if (soloDuplicados) {
         const key = `${e.bodega}|${e.numero_interno}`
         if (!duplicados.has(key)) return false
       }
+      // Filtros rápidos.
+      if (filtroRapido === 'operativos' && e.estado_operacional !== 'Operativo') return false
+      if (filtroRapido === 'inoperativos' && e.estado_operacional !== 'Inoperativo') return false
+      if (filtroRapido === 'con_faltantes') {
+        const f = parseFaltantes(e.elementos_faltantes)
+        if (f.length === 0) return false
+      }
+      if (filtroRapido === 'sin_foto' && e.foto_enviada) return false
       if (!texto) return true
       return CAMPOS_BUSQUEDA.some((c) =>
         String(e[c] ?? '')
@@ -78,7 +133,7 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
           .includes(texto),
       )
     })
-  }, [equipos, busqueda, filtroBodega, soloDuplicados, duplicados])
+  }, [equiposActivos, busqueda, filtroBodega, soloDuplicados, duplicados, filtroRapido])
 
   const equipoAEliminar = equipos.find((e) => e.id === confirmId)
 
@@ -91,6 +146,17 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
       toast.error(err?.message ?? 'No se pudo eliminar')
     } finally {
       setConfirmId(null)
+    }
+  }
+
+  const handleRegistrarMovimiento = async (payload) => {
+    if (!onRegistrarMovimiento) return
+    try {
+      await onRegistrarMovimiento(payload)
+      toast.success('Movimiento registrado')
+      setMovimientoEquipo(null)
+    } catch (err) {
+      toast.error(err?.message ?? 'No se pudo registrar el movimiento')
     }
   }
 
@@ -162,6 +228,55 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
           </label>
         </div>
 
+        {/* Filtros rápidos (chips clickeables con conteo) */}
+        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filtros rápidos">
+          {[
+            { id: 'todos', label: 'Todos', color: 'slate' },
+            { id: 'operativos', label: 'Operativos', color: 'green' },
+            { id: 'inoperativos', label: 'Inoperativos', color: 'red' },
+            { id: 'con_faltantes', label: 'Con faltantes', color: 'amber' },
+            { id: 'sin_foto', label: 'Sin foto', color: 'blue' },
+          ].map((chip) => {
+            const activo = filtroRapido === chip.id
+            const count = conteosFiltros[chip.id] ?? 0
+            const colorClasses = {
+              slate: activo
+                ? 'border-slate-700 bg-slate-900 text-white'
+                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100',
+              green: activo
+                ? 'border-green-700 bg-green-600 text-white'
+                : 'border-green-300 bg-green-50 text-green-800 hover:bg-green-100',
+              red: activo
+                ? 'border-red-700 bg-red-600 text-white'
+                : 'border-red-300 bg-red-50 text-red-800 hover:bg-red-100',
+              amber: activo
+                ? 'border-amber-700 bg-amber-600 text-white'
+                : 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100',
+              blue: activo
+                ? 'border-blue-700 bg-blue-600 text-white'
+                : 'border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100',
+            }[chip.color]
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setFiltroRapido(chip.id)}
+                aria-pressed={activo}
+                className={`flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-[0.78rem] font-bold transition ${colorClasses}`}
+              >
+                <span>{chip.label}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0 text-[0.68rem] tabular-nums ${
+                    activo ? 'bg-white/25' : 'bg-black/10'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
         <div className="mt-3 flex flex-wrap gap-2">
           <span className="rounded-full bg-green-100 px-2.5 py-1 text-[0.7rem] font-bold uppercase tracking-wide text-green-700">
             Operativo
@@ -176,7 +291,7 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
 
         {equiposFiltrados.length === 0 ? (
           <div className="mt-4 rounded-[10px] border-2 border-dashed border-slate-300 px-5 py-7 text-center text-sm text-slate-500">
-            {equipos.length === 0
+            {equiposActivos.length === 0
               ? 'Aún no hay registros. Ve a "Registrar" para empezar.'
               : 'No se encontraron equipos con los filtros actuales.'}
           </div>
@@ -262,6 +377,27 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
                       </div>
                     )}
 
+                    {/* Última ubicación (destacada) y resumen de último movimiento. */}
+                    {(e.ubicacion_actual || e.ultimo_movimiento) && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.82rem] text-slate-700">
+                        <span className="font-semibold">
+                          📍 {e.ubicacion_actual || e.bodega}
+                        </span>
+                        {e.ultimo_movimiento && (
+                          <span className="text-[0.78rem] text-slate-500">
+                            · Movido a <strong className="text-slate-700">{e.ultimo_movimiento.bodega_destino}</strong>
+                            {' '}
+                            el {formatearFechaCorta(e.ultimo_movimiento.fecha)} por{' '}
+                            <strong className="text-slate-700">{e.ultimo_movimiento.responsable}</strong>
+                            {' '}
+                            <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[0.68rem] font-bold text-violet-800">
+                              {e.ultimo_movimiento.motivo}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {faltantes.length > 0 && (
                       <div className="mt-1.5 text-[0.78rem] font-medium text-red-700">
                         ⚠ Faltantes: {faltantes.join(', ')}
@@ -278,13 +414,31 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
                           📸 Foto enviada
                         </span>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => setConfirmId(e.id)}
-                        className="ml-auto rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[0.78rem] font-bold text-red-700 transition hover:-translate-y-px hover:border-red-300 hover:bg-red-100"
-                      >
-                        Eliminar
-                      </button>
+                      <div className="ml-auto flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMovimientoEquipo(e)}
+                          className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[0.78rem] font-bold text-blue-700 transition hover:-translate-y-px hover:border-blue-300 hover:bg-blue-100"
+                          title="Registrar un traslado o cambio de ubicación"
+                        >
+                          🔄 Mover
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHistorialEquipo(e)}
+                          className="rounded-full border border-slate-300 bg-white px-3 py-1 text-[0.78rem] font-bold text-slate-700 transition hover:-translate-y-px hover:bg-slate-50"
+                          title="Ver historial completo de movimientos"
+                        >
+                          📜 Historial
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmId(e.id)}
+                          className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-[0.78rem] font-bold text-red-700 transition hover:-translate-y-px hover:border-red-300 hover:bg-red-100"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -306,6 +460,19 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
         onConfirm={handleConfirmarEliminar}
         onCancel={() => setConfirmId(null)}
         peligro
+      />
+
+      <MovimientoDialog
+        open={Boolean(movimientoEquipo)}
+        equipo={movimientoEquipo}
+        onSubmit={handleRegistrarMovimiento}
+        onCancel={() => setMovimientoEquipo(null)}
+      />
+
+      <MovimientoHistorialModal
+        open={Boolean(historialEquipo)}
+        equipo={historialEquipo}
+        onClose={() => setHistorialEquipo(null)}
       />
     </section>
   )

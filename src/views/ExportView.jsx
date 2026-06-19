@@ -10,8 +10,10 @@ export default function ExportView({ equipos, bodegaFiltro }) {
   )
 
   const equiposAExportar = useMemo(() => {
-    if (bodega === 'todas') return equipos
-    return equipos.filter((e) => e.bodega === bodega)
+    // Excluimos siempre la papelera — son equipos eliminados.
+    const activos = equipos.filter((e) => !e.deleted_at)
+    if (bodega === 'todas') return activos
+    return activos.filter((e) => e.bodega === bodega)
   }, [equipos, bodega])
 
   const handleExportar = () => {

@@ -1,4 +1,5 @@
 import { BODEGAS, TABS } from '../lib/constants'
+import NetworkIndicator from './NetworkIndicator'
 
 /**
  * Topbar + tabs sticky.
@@ -6,6 +7,7 @@ import { BODEGAS, TABS } from '../lib/constants'
  *  - bodega, onBodegaChange
  *  - tabActiva, onTabChange
  *  - conteo: { todas, Antillanca, Cordillera, Renca }
+ *  - papeleraCount: número de equipos en la papelera (para badge en tab)
  */
 export default function Header({
   bodega,
@@ -13,6 +15,7 @@ export default function Header({
   tabActiva,
   onTabChange,
   conteo,
+  papeleraCount = 0,
 }) {
   const stats = [
     { key: 'todas', label: 'Total' },
@@ -48,7 +51,8 @@ export default function Header({
           </div>
 
           {/* Stats badges (desktop) */}
-          <div className="hidden gap-2 sm:flex">
+          <div className="hidden gap-2 sm:flex sm:items-center">
+            <NetworkIndicator />
             {stats.map((s) => (
               <div
                 key={s.key}
@@ -63,6 +67,11 @@ export default function Header({
               </div>
             ))}
           </div>
+        </div>
+
+        {/* Indicador de red en móvil */}
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-2 sm:hidden">
+          <NetworkIndicator />
         </div>
 
         {/* Stats badges (móvil: segunda fila compacta) */}
@@ -92,6 +101,7 @@ export default function Header({
       >
         {TABS.map((t) => {
           const activo = t.id === tabActiva
+          const esPapelera = t.id === 'trash'
           return (
             <button
               key={t.id}
@@ -106,6 +116,17 @@ export default function Header({
               }`}
             >
               {t.label}
+              {esPapelera && papeleraCount > 0 && (
+                <span
+                  className={`ml-1.5 rounded-full px-1.5 py-0 text-[0.65rem] tabular-nums ${
+                    activo
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}
+                >
+                  {papeleraCount}
+                </span>
+              )}
             </button>
           )
         })}

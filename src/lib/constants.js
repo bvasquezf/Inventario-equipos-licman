@@ -18,6 +18,16 @@ export const TIPOS_EQUIPO = [
   'Recoge pedidos horizontal',
 ]
 
+// Motivos posibles para un movimiento de equipo (cambio de bodega,
+// arriendo, mantención, etc.).
+export const MOTIVOS_MOVIMIENTO = [
+  'Cambio de bodega',
+  'En arriendo a cliente',
+  'Devuelto de arriendo',
+  'Mantención externa',
+  'Otro',
+]
+
 // Etiqueta corta para mostrar en chips/badges.
 export const ESTADO_CHIP = {
   Operativo: 'Operativo',
@@ -46,6 +56,7 @@ export const PHOTO_EMAIL = 'salinascompliance@gmail.com'
 export const TABS = [
   { id: 'form', label: '📝 Registrar' },
   { id: 'list', label: '📋 Inventario' },
+  { id: 'trash', label: '🗑️ Papelera' },
   { id: 'export', label: '⬇️ Exportar' },
 ]
 
