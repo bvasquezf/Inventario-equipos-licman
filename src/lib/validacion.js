@@ -1,4 +1,4 @@
-import { BODEGAS, ESTADOS, TIPOS_EQUIPO } from './constants'
+import { BODEGAS, ESTADOS, TIPOS_EQUIPO, MARCA_OTRA } from './constants'
 
 // Campos requeridos para registrar un equipo.
 const CAMPOS_REQUERIDOS = [
@@ -23,6 +23,15 @@ export function validarEquipo(data) {
     const valor = data[campo]
     if (valor === undefined || valor === null || String(valor).trim() === '') {
       errores[campo] = 'Este campo es obligatorio'
+    }
+  }
+
+  // Si el operador eligió "Otra" en marca, exigimos que haya tipeado
+  // la marca a mano en `marcaOtra`.
+  if (data.marca === MARCA_OTRA) {
+    const otra = String(data.marcaOtra ?? '').trim()
+    if (!otra) {
+      errores.marcaOtra = 'Escribí la marca'
     }
   }
 

@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BODEGAS } from '../lib/constants'
 import EstadoBadge from '../components/EstadoBadge'
 import ConfirmDialog from '../components/ConfirmDialog'
 import MovimientoDialog from '../components/MovimientoDialog'
 import MovimientoHistorialModal from '../components/MovimientoHistorialModal'
 import { useToast } from '../context/ToastContext'
+
+// Cantidad de cards por página en el inventario. Mobile-first: 20
+// mantiene un scroll razonable sin saturar la pantalla.
+const ITEMS_POR_PAGINA = 20
 
 const CAMPOS_BUSQUEDA = [
   'numero_interno',
@@ -15,6 +19,89 @@ const CAMPOS_BUSQUEDA = [
   'responsable',
   'ubicacion_actual',
 ]
+
+/**
+ * Genera la lista de números de página a mostrar, con ellipsis
+ * cuando hay muchas páginas. Ejemplos:
+ *   7 páginas, actual 3 → [1, 2, 3, 4, 5, '…', 7]
+ *   4 páginas, actual 2 → [1, 2, 3, 4]
+ *   1 página            → [1]
+ */
+function generarPaginas(actual, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  const paginas = [1]
+  const inicio = Math.max(2, actual - 1)
+  const fin = Math.min(total - 1, actual + 1)
+  if (inicio > 2) paginas.push('…')
+  for (let i = inicio; i <= fin; i++) paginas.push(i)
+  if (fin < total - 1) paginas.push('…')
+  paginas.push(total)
+  return paginas
+}
+
+function Paginacion({ pagina, totalPaginas, desde, hasta, total, onCambiar }) {
+  const paginas = generarPaginas(pagina, totalPaginas)
+  const hayAnterior = pagina > 1
+  const haySiguiente = pagina < totalPaginas
+
+  return (
+    <nav
+      className="mt-4 flex flex-col items-center gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-between"
+      aria-label="Paginación del inventario"
+    >
+      <p className="text-[0.78rem] font-medium text-slate-600 tabular-nums">
+        Mostrando <strong className="text-slate-900">{desde}</strong>–
+        <strong className="text-slate-900">{hasta}</strong> de{' '}
+        <strong className="text-slate-900">{total}</strong>
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => onCambiar(pagina - 1)}
+          disabled={!hayAnterior}
+          className="rounded-lg border-[1.5px] border-slate-300 bg-white px-2.5 py-1.5 text-[0.78rem] font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          ← Anterior
+        </button>
+        {paginas.map((p, i) =>
+          p === '…' ? (
+            <span
+              key={`ellipsis-${i}`}
+              className="px-1 text-[0.78rem] font-bold text-slate-400"
+              aria-hidden
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onCambiar(p)}
+              aria-current={p === pagina ? 'page' : undefined}
+              className={`min-w-[2.25rem] rounded-lg border-[1.5px] px-2 py-1.5 text-[0.78rem] font-bold tabular-nums transition ${
+                p === pagina
+                  ? 'border-blue-600 bg-blue-600 text-white'
+                  : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={() => onCambiar(pagina + 1)}
+          disabled={!haySiguiente}
+          className="rounded-lg border-[1.5px] border-slate-300 bg-white px-2.5 py-1.5 text-[0.78rem] font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Siguiente →
+        </button>
+      </div>
+    </nav>
+  )
+}
 
 function formatearFecha(iso) {
   if (!iso) return ''
@@ -67,6 +154,7 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar, onRegistra
   const [filtroRapido, setFiltroRapido] = useState('todos')
   const [movimientoEquipo, setMovimientoEquipo] = useState(null)
   const [historialEquipo, setHistorialEquipo] = useState(null)
+  const [pagina, setPagina] = useState(1)
 
   // Equipos visibles (excluir papelera). La papelera tiene su propia
   // vista, así que acá solo mostramos los activos.
@@ -134,6 +222,33 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar, onRegistra
       )
     })
   }, [equiposActivos, busqueda, filtroBodega, soloDuplicados, duplicados, filtroRapido])
+
+  // Paginación: cuando cambia cualquier filtro, volvemos a la página 1
+  // para que el usuario no quede atrapado en una página que ya no
+  // tiene items después de filtrar.
+  useEffect(() => {
+    setPagina(1)
+  }, [busqueda, filtroBodega, soloDuplicados, filtroRapido])
+
+  const totalPaginas = Math.max(1, Math.ceil(equiposFiltrados.length / ITEMS_POR_PAGINA))
+
+  // Si la página actual quedó fuera de rango (por ejemplo porque se
+  // borraron items), la corregimos a la última válida.
+  useEffect(() => {
+    if (pagina > totalPaginas) setPagina(totalPaginas)
+  }, [pagina, totalPaginas])
+
+  const equiposPaginados = useMemo(() => {
+    const inicio = (pagina - 1) * ITEMS_POR_PAGINA
+    return equiposFiltrados.slice(inicio, inicio + ITEMS_POR_PAGINA)
+  }, [equiposFiltrados, pagina])
+
+  const rangoActual = useMemo(() => {
+    if (equiposFiltrados.length === 0) return { desde: 0, hasta: 0 }
+    const desde = (pagina - 1) * ITEMS_POR_PAGINA + 1
+    const hasta = Math.min(pagina * ITEMS_POR_PAGINA, equiposFiltrados.length)
+    return { desde, hasta }
+  }, [equiposFiltrados.length, pagina])
 
   const equipoAEliminar = equipos.find((e) => e.id === confirmId)
 
@@ -297,7 +412,7 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar, onRegistra
           </div>
         ) : (
           <div className="mt-4 space-y-2">
-            {equiposFiltrados.map((e) => {
+            {equiposPaginados.map((e) => {
               const faltantes = parseFaltantes(e.elementos_faltantes)
               const correlativo = e.correlativo ?? '—'
               const dupKey = `${e.bodega}|${e.numero_interno}`
@@ -445,6 +560,18 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar, onRegistra
               )
             })}
           </div>
+        )}
+
+        {/* ============ Paginación ============ */}
+        {equiposFiltrados.length > 0 && (
+          <Paginacion
+            pagina={pagina}
+            totalPaginas={totalPaginas}
+            desde={rangoActual.desde}
+            hasta={rangoActual.hasta}
+            total={equiposFiltrados.length}
+            onCambiar={setPagina}
+          />
         )}
       </div>
 

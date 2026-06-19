@@ -18,6 +18,15 @@ export const TIPOS_EQUIPO = [
   'Recoge pedidos horizontal',
 ]
 
+// Marcas de equipos que manejamos. Si el equipo no está en la lista,
+// el operador elige "Otra" y tipea la marca a mano.
+export const MARCAS = ['Hyster', 'Jungheinrich', 'Yale']
+
+// Valor centinela usado en el `value` del <select> cuando el operador
+// eligió "Otra" y va a tipear la marca manualmente. NO se guarda en la
+// DB: al enviar se reemplaza por el texto tipeado.
+export const MARCA_OTRA = '__otra__'
+
 // Motivos posibles para un movimiento de equipo (cambio de bodega,
 // arriendo, mantención, etc.).
 export const MOTIVOS_MOVIMIENTO = [

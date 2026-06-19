@@ -4,6 +4,8 @@ import {
   ESTADOS,
   ELEMENTOS_FALTANTES,
   TIPOS_EQUIPO,
+  MARCAS,
+  MARCA_OTRA,
   PHOTO_EMAIL,
 } from '../lib/constants'
 import { validarEquipo } from '../lib/validacion'
@@ -26,6 +28,7 @@ const estadoInicial = {
   numero_interno: '',
   numero_serie: '',
   marca: '',
+  marcaOtra: '',
   modelo: '',
   ubicacion_actual: '',
   estado_operacional: '',
@@ -231,8 +234,13 @@ export default function FormView({ bodega = '', equipos = [], onGuardar }) {
     // El correlativo del preview NO se envía: la RPC lo asigna
     // atómicamente al hacer el insert. (Lo seteamos a undefined para
     // que JSON.stringify lo omita al serializar el payload.)
+    // Si el operador eligió "Otra" en marca, mandamos el texto tipeado
+    // en lugar del centinela.
+    const marcaFinal = form.marca === MARCA_OTRA ? form.marcaOtra.trim() : form.marca
     const payload = {
       ...form,
+      marca: marcaFinal,
+      marcaOtra: undefined,
       correlativo: undefined,
       // elementos_faltantes es jsonb en la DB → enviamos el array directo.
       elementos_faltantes: form.elementos_faltantes ?? [],
@@ -471,21 +479,43 @@ export default function FormView({ bodega = '', equipos = [], onGuardar }) {
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="block text-[0.88rem] font-semibold text-slate-900">
-              Marca
-              <input
-                type="text"
+            <div className="block text-[0.88rem] font-semibold text-slate-900">
+              <label htmlFor="marca-select">Marca</label>
+              <select
+                id="marca-select"
                 name="marca"
                 value={form.marca}
                 onChange={handleChange}
                 ref={(el) => (refs.current.marca = el)}
-                placeholder="Ej. Caterpillar"
                 className={clasesInput}
-              />
+              >
+                <option value="">— Selecciona una marca —</option>
+                {MARCAS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+                <option value={MARCA_OTRA}>Otra…</option>
+              </select>
+              {form.marca === MARCA_OTRA && (
+                <input
+                  type="text"
+                  name="marcaOtra"
+                  value={form.marcaOtra}
+                  onChange={handleChange}
+                  ref={(el) => (refs.current.marcaOtra = el)}
+                  placeholder="Escribí la marca"
+                  className={`${clasesInput} mt-2`}
+                  aria-label="Especificar marca"
+                />
+              )}
               {errores.marca && (
                 <p className="mt-1 text-xs font-medium text-red-600">{errores.marca}</p>
               )}
-            </label>
+              {errores.marcaOtra && (
+                <p className="mt-1 text-xs font-medium text-red-600">{errores.marcaOtra}</p>
+              )}
+            </div>
             <label className="block text-[0.88rem] font-semibold text-slate-900">
               Modelo
               <input
