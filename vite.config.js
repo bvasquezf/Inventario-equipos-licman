@@ -17,7 +17,7 @@ export default defineConfig({
       devOptions: {
         enabled: false, // mantener false en dev para no interferir con HMR
       },
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icons.svg'],
       // Manifest de la PWA (aparece como "instalable" en Chrome/Safari).
       manifest: {
         name: 'Inventario Licman',
@@ -31,22 +31,19 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         lang: 'es-CL',
+        // Usamos los SVG existentes como iconos. Chrome/Edge/Firefox
+        // aceptan SVG. iOS Safari es picky con PNG, pero el soporte
+        // PWA en iOS es limitado de todos modos.
+        // Cuando tengas PNGs reales, agregalos en `public/` y reemplazá
+        // estas entradas por:
+        //   { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+        //   { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
         icons: [
           {
-            src: 'icon-192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-          {
-            src: 'icon-512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
+            src: 'icons.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any',
           },
         ],
       },
