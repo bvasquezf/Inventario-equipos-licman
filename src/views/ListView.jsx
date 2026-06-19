@@ -31,6 +31,9 @@ function formatearFecha(iso) {
 
 function parseFaltantes(valor) {
   if (!valor) return []
+  // jsonb array (Supabase lo deserializa como array JS).
+  if (Array.isArray(valor)) return valor.filter(Boolean)
+  // Fallback por si quedó alguna fila vieja con texto CSV.
   return String(valor)
     .split(',')
     .map((s) => s.trim())

@@ -37,10 +37,14 @@ const estadoInicial = {
 
 /**
  * Formulario de registro de equipos.
- * Al montarse consulta un PREVIEW del próximo correlativo (solo visual).
- * El número REAL se asigna atómicamente al guardar, dentro de la RPC
- * `insert_equipo`, que llama a nextval() e inserta la fila en una
- * sola transacción. Esto evita huecos en la numeración.
+ * Al montarse consulta el PREVIEW del próximo correlativo vía la RPC
+ * `preview_next_correlativo` (solo visual, sin lock).
+ * El número REAL se asigna al guardar dentro de la RPC `insert_equipo`,
+ * que toma un advisory lock, busca el MENOR correlativo libre y
+ * inserta la fila en una sola transacción. Esto:
+ *   - Llena automáticamente los huecos de la numeración.
+ *   - Garantiza atomicidad con inserts concurrentes.
+ *   - Mantiene la consistencia incluso con deletes.
  * Props:
  *  - bodegaInicial: string
  *  - onGuardar(equipo): async  → devuelve la fila insertada con el
@@ -59,10 +63,10 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
   const [estadoCorrelativo, setEstadoCorrelativo] = useState('cargando') // 'cargando' | 'listo' | 'error'
 
   // ------------------------------------------------------------------
-  // Preview del próximo correlativo: consultamos el máximo actual en la DB.
-  // Esto es solo una PISTA VISUAL — el número REAL se asigna al guardar
-  // (atómicamente vía la función RPC insert_equipo), por lo que dos
-  // usuarios viendo el mismo preview no entran en conflicto.
+  // Preview del próximo correlativo: la RPC `preview_next_correlativo`
+  // devuelve el MENOR número libre en la tabla. Es solo una pista
+  // visual; el número REAL se asigna al guardar vía `insert_equipo`,
+  // que es atómico.
   // ------------------------------------------------------------------
   useEffect(() => {
     let cancelado = false
@@ -71,12 +75,7 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
         setEstadoCorrelativo('error')
         return
       }
-      const { data, error } = await supabase
-        .from('equipos')
-        .select('correlativo')
-        .order('correlativo', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const { data, error } = await supabase.rpc('preview_next_correlativo')
       if (cancelado) return
       if (error) {
         console.error('Error al obtener preview:', error)
@@ -84,8 +83,7 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
         toast.error('No se pudo cargar el preview del correlativo')
         return
       }
-      const preview = (data?.correlativo ?? 0) + 1
-      setForm((prev) => ({ ...prev, correlativo: preview }))
+      setForm((prev) => ({ ...prev, correlativo: data }))
       setEstadoCorrelativo('listo')
     }
     obtener()
@@ -124,21 +122,28 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
   }
 
   /**
-   * Limpia el formulario. `ultimoGuardado` es el correlativo REAL del
-   * registro que acabamos de guardar (lo entrega la RPC). Con ese dato
-   * calculamos el siguiente preview localmente, sin volver a consultar
-   * la DB. Si se llama sin argumento (botón "Limpiar" sin guardar antes),
-   * usa el preview actual como base.
+   * Limpia el formulario y vuelve a consultar el preview.
+   * Después de un guardado, la tabla cambió: el menor correlativo
+   * libre puede ser distinto del que mostrábamos antes (puede haber
+   * rellenado un hueco), así que siempre re-consultamos a la DB.
    */
-  const handleLimpiar = (ultimoGuardado) => {
-    const siguiente = (ultimoGuardado ?? form.correlativo ?? 0) + 1
+  const handleLimpiar = () => {
     setForm({
       ...estadoInicial,
       bodega: bodegaInicial && bodegaInicial !== 'todas' ? bodegaInicial : '',
-      correlativo: siguiente,
     })
     setErrores({})
-    setEstadoCorrelativo('listo')
+    setEstadoCorrelativo('cargando')
+    if (supabase) {
+      supabase.rpc('preview_next_correlativo').then(({ data, error }) => {
+        if (error) {
+          setEstadoCorrelativo('error')
+          return
+        }
+        setForm((prev) => ({ ...prev, correlativo: data }))
+        setEstadoCorrelativo('listo')
+      })
+    }
   }
 
   const reintentarPreview = async () => {
@@ -147,21 +152,30 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
       setEstadoCorrelativo('error')
       return
     }
-    const { data, error } = await supabase
-      .from('equipos')
-      .select('correlativo')
-      .order('correlativo', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const { data, error } = await supabase.rpc('preview_next_correlativo')
     if (error) {
       setEstadoCorrelativo('error')
       toast.error('No se pudo reintentar el preview del correlativo')
       return
     }
-    const preview = (data?.correlativo ?? 0) + 1
-    setForm((prev) => ({ ...prev, correlativo: preview }))
+    setForm((prev) => ({ ...prev, correlativo: data }))
     setEstadoCorrelativo('listo')
   }
+
+  /**
+   * Re-consulta el preview en silencio cuando el usuario enfoca el primer
+   * campo del formulario. Es útil porque el preview se carga UNA vez al
+   * montar, pero la tabla puede haber cambiado (otros dispositivos
+   * guardaron, vos guardaste antes, etc.) y el número mostrado puede
+   * haber quedado desactualizado.
+   */
+  const handleFocusPreview = useCallback(async () => {
+    if (estadoCorrelativo !== 'listo' || !supabase) return
+    const { data, error } = await supabase.rpc('preview_next_correlativo')
+    if (!error && data != null) {
+      setForm((prev) => (prev.correlativo === data ? prev : { ...prev, correlativo: data }))
+    }
+  }, [estadoCorrelativo])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -172,7 +186,8 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
     const payload = {
       ...form,
       correlativo: undefined,
-      elementos_faltantes: (form.elementos_faltantes ?? []).join(', '),
+      // elementos_faltantes es jsonb en la DB → enviamos el array directo.
+      elementos_faltantes: form.elementos_faltantes ?? [],
       horometro:
         form.horometro === '' || form.horometro === null ? null : Number(form.horometro),
     }
@@ -190,13 +205,12 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
 
     setGuardando(true)
     try {
-      // La RPC devuelve la fila con el correlativo REAL. Si en el
-      // entretanto otro usuario guardó, este número puede diferir del
-      // preview que mostraba la pantalla — el toast confirma el real.
+      // La RPC devuelve la fila con el correlativo REAL (el menor libre
+      // que se asignó). El toast confirma ese número.
       const resultado = await onGuardar(payload)
       const correlativoReal = resultado?.correlativo ?? form.correlativo
       toast.success(`Registro #${String(correlativoReal).padStart(4, '0')} guardado`)
-      handleLimpiar(correlativoReal)
+      handleLimpiar()
     } catch (err) {
       console.error(err)
       toast.error(err?.message ?? 'Error al guardar el equipo')
@@ -234,9 +248,31 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
             </p>
           )}
           {estadoCorrelativo === 'listo' && (
-            <p className="mt-0.5 text-[0.78rem] text-slate-600">
-              Vista previa. El número real se asigna al guardar.
-            </p>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <p className="text-[0.78rem] text-slate-600">
+                Vista previa. El número real se asigna al guardar.
+              </p>
+              <button
+                type="button"
+                onClick={reintentarPreview}
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700"
+                title="Actualizar preview del correlativo"
+                aria-label="Actualizar preview del correlativo"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="h-3.5 w-3.5"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H3.989a.75.75 0 0 0-.75.75v4.242a.75.75 0 0 0 1.5 0v-2.43l.31.31a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39zm1.23-3.723a.75.75 0 0 0 .219-.53V2.929a.75.75 0 0 0-1.5 0V5.36l-.31-.31A7 7 0 0 0 3.239 8.188a.75.75 0 1 0 1.448.389A5.5 5.5 0 0 1 13.89 6.11l.311.31h-2.433a.75.75 0 0 0 0 1.5h4.243a.75.75 0 0 0 .53-.219z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
           )}
           {estadoCorrelativo === 'error' && (
             <p className="mt-1 text-sm text-red-700">
@@ -285,6 +321,7 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
               name="bodega"
               value={form.bodega}
               onChange={handleChange}
+              onFocus={handleFocusPreview}
               ref={(el) => (refs.current.bodega = el)}
               className={clasesInput}
             >

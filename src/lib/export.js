@@ -35,6 +35,11 @@ function formatearFila(equipo) {
     if (campo === 'horometro') {
       return valor === null || valor === undefined || valor === '' ? '' : Number(valor)
     }
+    if (campo === 'elementos_faltantes') {
+      // jsonb array → string CSV para que se vea legible en Excel.
+      if (Array.isArray(valor)) return valor.join(', ')
+      return valor ?? ''
+    }
     return valor ?? ''
   })
 }
