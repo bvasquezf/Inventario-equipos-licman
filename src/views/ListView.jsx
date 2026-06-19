@@ -45,11 +45,31 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
   const [busqueda, setBusqueda] = useState('')
   const [filtroBodega, setFiltroBodega] = useState(bodegaFiltro || 'todas')
   const [confirmId, setConfirmId] = useState(null)
+  const [soloDuplicados, setSoloDuplicados] = useState(false)
+
+  // Detectar N° interno repetido POR BODEGA. Cada bodega tiene su
+  // propia numeración, así que el mismo N° interno en bodegas
+  // distintas NO se considera duplicado.
+  // Estructura: Set de claves "bodega|numero_interno" con count > 1.
+  const duplicados = useMemo(() => {
+    const counts = {}
+    for (const e of equipos) {
+      if (e.numero_interno && e.bodega) {
+        const key = `${e.bodega}|${e.numero_interno}`
+        counts[key] = (counts[key] || 0) + 1
+      }
+    }
+    return new Set(Object.keys(counts).filter((k) => counts[k] > 1))
+  }, [equipos])
 
   const equiposFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase()
     return equipos.filter((e) => {
       if (filtroBodega !== 'todas' && e.bodega !== filtroBodega) return false
+      if (soloDuplicados) {
+        const key = `${e.bodega}|${e.numero_interno}`
+        if (!duplicados.has(key)) return false
+      }
       if (!texto) return true
       return CAMPOS_BUSQUEDA.some((c) =>
         String(e[c] ?? '')
@@ -57,7 +77,7 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
           .includes(texto),
       )
     })
-  }, [equipos, busqueda, filtroBodega])
+  }, [equipos, busqueda, filtroBodega, soloDuplicados, duplicados])
 
   const equipoAEliminar = equipos.find((e) => e.id === confirmId)
 
@@ -104,6 +124,43 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
           </div>
         </div>
 
+        {/* Banner de alerta: N° internos repetidos */}
+        {duplicados.size > 0 && (
+          <div className="mt-3 flex items-start gap-2.5 rounded-[10px] border-l-4 border-red-600 bg-red-50 px-3 py-2.5 text-[0.85rem] text-red-900">
+            <span className="text-base">⚠️</span>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold">
+                {duplicados.size === 1
+                  ? 'Hay 1 N° interno repetido en una bodega'
+                  : `Hay ${duplicados.size} N° internos repetidos`}
+              </p>
+              <p className="mt-0.5 text-[0.8rem] text-red-800">
+                Revisá los equipos marcados en rojo. El mismo N° interno en la misma
+                bodega indica que el equipo fue registrado más de una vez o que hay
+                un error de tipeo.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Filtro: solo mostrar duplicados */}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-[0.85rem] font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={soloDuplicados}
+              onChange={(e) => setSoloDuplicados(e.target.checked)}
+              className="h-4 w-4 accent-red-600"
+            />
+            Solo mostrar con N° interno repetido
+            {duplicados.size > 0 && (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[0.68rem] font-bold text-red-700">
+                {duplicados.size}
+              </span>
+            )}
+          </label>
+        </div>
+
         <div className="mt-3 flex flex-wrap gap-2">
           <span className="rounded-full bg-green-100 px-2.5 py-1 text-[0.7rem] font-bold uppercase tracking-wide text-green-700">
             Operativo
@@ -127,10 +184,16 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
             {equiposFiltrados.map((e) => {
               const faltantes = parseFaltantes(e.elementos_faltantes)
               const correlativo = e.correlativo ?? '—'
+              const dupKey = `${e.bodega}|${e.numero_interno}`
+              const esDuplicado = duplicados.has(dupKey)
               return (
                 <article
                   key={e.id}
-                  className="group grid grid-cols-[60px_1fr] items-start gap-3 rounded-[10px] border border-slate-200 bg-white p-3.5 transition hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(16,24,40,0.06)] sm:p-4"
+                  className={`group grid grid-cols-[60px_1fr] items-start gap-3 rounded-[10px] border p-3.5 transition sm:p-4 ${
+                    esDuplicado
+                      ? 'border-red-300 bg-red-50/40 hover:shadow-[0_14px_30px_rgba(220,38,38,0.10)]'
+                      : 'border-slate-200 bg-white hover:-translate-y-1 hover:shadow-[0_14px_30px_rgba(16,24,40,0.06)]'
+                  }`}
                 >
                   <div className="rounded-[10px] bg-slate-900 px-1 py-2 text-center font-extrabold text-white">
                     <span className="block text-[1.2rem] leading-none tabular-nums">
@@ -149,6 +212,14 @@ export default function ListView({ equipos, bodegaFiltro, onEliminar }) {
                       <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[0.7rem] font-bold text-sky-800">
                         {e.bodega}
                       </span>
+                      {esDuplicado && (
+                        <span
+                          className="rounded-full bg-red-100 px-2 py-0.5 text-[0.7rem] font-bold uppercase tracking-wide text-red-700"
+                          title={`El N° interno "${e.numero_interno}" está repetido en ${e.bodega}`}
+                        >
+                          ⚠ N° interno repetido
+                        </span>
+                      )}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[0.82rem] text-slate-600">
                       <span>

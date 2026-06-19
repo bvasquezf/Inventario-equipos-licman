@@ -105,8 +105,21 @@ export default function App() {
 
   const eliminarEquipo = useCallback(async (id) => {
     if (!supabase) throw new Error('No hay credenciales de Supabase configuradas.')
-    const { error } = await supabase.from('equipos').delete().eq('id', id)
+    // `.select()` al final hace que la API devuelva las filas borradas.
+    // Si la lista viene vacía, sabemos que la operación NO borró nada
+    // (por permisos RLS, o porque el id no existía) y tiramos un error
+    // real en vez de un "éxito falso".
+    const { data, error } = await supabase
+      .from('equipos')
+      .delete()
+      .eq('id', id)
+      .select()
     if (error) throw new Error(error.message)
+    if (!data || data.length === 0) {
+      throw new Error(
+        'No se pudo eliminar: la fila no existe o no tenés permiso. Corré la migración 003_fix_delete.sql en Supabase.',
+      )
+    }
     setEquipos((prev) => prev.filter((e) => e.id !== id))
   }, [])
 
