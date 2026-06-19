@@ -45,22 +45,35 @@ const estadoInicial = {
  *   - Llena automáticamente los huecos de la numeración.
  *   - Garantiza atomicidad con inserts concurrentes.
  *   - Mantiene la consistencia incluso con deletes.
+ * La bodega NO se selecciona en el form: viene de la prop `bodega`,
+ * que es la seleccionada en el header (una sola vez por sesión).
  * Props:
- *  - bodegaInicial: string
+ *  - bodega: string  → 'Antillanca' | 'Cordillera' | 'Renca' | '' | 'todas'
  *  - onGuardar(equipo): async  → devuelve la fila insertada con el
  *                                correlativo real asignado por la DB
  */
-export default function FormView({ bodegaInicial = '', onGuardar }) {
+export default function FormView({ bodega = '', onGuardar }) {
   const toast = useToast()
   const refs = useRef({})
 
+  // La bodega viene del header (fuera de este componente).
+  // Solo es "válida" si es una de las 3 bodegas reales (no 'todas', no '').
+  const bodegaValida = bodega && bodega !== 'todas' && BODEGAS.includes(bodega)
+
   const [form, setForm] = useState(() => ({
     ...estadoInicial,
-    bodega: bodegaInicial && bodegaInicial !== 'todas' ? bodegaInicial : '',
+    bodega: bodegaValida ? bodega : '',
   }))
   const [errores, setErrores] = useState({})
   const [guardando, setGuardando] = useState(false)
   const [estadoCorrelativo, setEstadoCorrelativo] = useState('cargando') // 'cargando' | 'listo' | 'error'
+
+  // Sincronizar form.bodega con la prop `bodega` cada vez que el
+  // usuario cambia la selección en el header. Así el form siempre
+  // registra en la bodega del contexto actual.
+  useEffect(() => {
+    setForm((prev) => ({ ...prev, bodega: bodegaValida ? bodega : '' }))
+  }, [bodega, bodegaValida])
 
   // ------------------------------------------------------------------
   // Preview del próximo correlativo: la RPC `preview_next_correlativo`
@@ -128,9 +141,11 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
    * rellenado un hueco), así que siempre re-consultamos a la DB.
    */
   const handleLimpiar = () => {
+    // La bodega NO se resetea: viene del prop (header). Así el siguiente
+    // registro se hace en la misma bodega sin tener que re-seleccionarla.
     setForm({
       ...estadoInicial,
-      bodega: bodegaInicial && bodegaInicial !== 'todas' ? bodegaInicial : '',
+      bodega: bodegaValida ? bodega : '',
     })
     setErrores({})
     setEstadoCorrelativo('cargando')
@@ -180,6 +195,11 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
+    if (!bodegaValida) {
+      toast.error('Selecciona una bodega en la barra superior antes de guardar')
+      return
+    }
+
     // El correlativo del preview NO se envía: la RPC lo asigna
     // atómicamente al hacer el insert. (Lo seteamos a undefined para
     // que JSON.stringify lo omita al serializar el payload.)
@@ -228,6 +248,35 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
       className="space-y-4"
       noValidate
     >
+      {/* ============ Contexto: bodega donde se está registrando ============ */}
+      <div
+        className={`flex items-center gap-3 rounded-[14px] border-2 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.10)] ${
+          bodegaValida
+            ? 'border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50'
+            : 'border-amber-300 bg-amber-50'
+        }`}
+      >
+        <span className="text-2xl">📍</span>
+        <div className="min-w-0 flex-1">
+          <p
+            className={`text-[0.72rem] font-bold uppercase tracking-wider ${
+              bodegaValida ? 'text-blue-700' : 'text-amber-700'
+            }`}
+          >
+            {bodegaValida ? 'Registrando equipos en' : 'Bodega no seleccionada'}
+          </p>
+          <p
+            className={`mt-0.5 text-base font-extrabold ${
+              bodegaValida ? 'text-blue-900' : 'text-amber-900'
+            }`}
+          >
+            {bodegaValida
+              ? bodega
+              : 'Selecciona una bodega en la barra superior'}
+          </p>
+        </div>
+      </div>
+
       {/* ============ Ticket de correlativo ============ */}
       <div
         className={`flex items-center justify-between gap-3 rounded-[14px] border-2 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.10)] sm:px-5 sm:py-4 ${
@@ -315,28 +364,6 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
             Identificación del equipo
           </legend>
 
-          <label className="block text-[0.88rem] font-semibold text-slate-900">
-            Bodega
-            <select
-              name="bodega"
-              value={form.bodega}
-              onChange={handleChange}
-              onFocus={handleFocusPreview}
-              ref={(el) => (refs.current.bodega = el)}
-              className={clasesInput}
-            >
-              <option value="">— Selecciona —</option>
-              {BODEGAS.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-            {errores.bodega && (
-              <p className="mt-1 text-xs font-medium text-red-600">{errores.bodega}</p>
-            )}
-          </label>
-
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block text-[0.88rem] font-semibold text-slate-900">
               Número interno
@@ -345,6 +372,7 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
                 name="numero_interno"
                 value={form.numero_interno}
                 onChange={handleChange}
+                onFocus={handleFocusPreview}
                 ref={(el) => (refs.current.numero_interno = el)}
                 placeholder="Ej. INT-0421"
                 className={clasesInput}
@@ -576,7 +604,7 @@ export default function FormView({ bodegaInicial = '', onGuardar }) {
           </button>
           <button
             type="submit"
-            disabled={guardando}
+            disabled={guardando || !bodegaValida}
             className="flex-1 rounded-[10px] bg-blue-600 px-4 py-3.5 text-base font-bold text-white shadow-[0_4px_12px_rgba(37,99,235,0.3)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {guardando ? 'Guardando…' : 'Guardar registro'}

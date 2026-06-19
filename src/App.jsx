@@ -141,7 +141,7 @@ export default function App() {
         {/* Las vistas se montan una sola vez y se ocultan con `hidden`.
             Así el correlativo de FormView no se "quema" al cambiar de pestaña. */}
         <div hidden={tabActiva !== 'form'}>
-          <FormView bodegaInicial={bodegaFiltro} onGuardar={guardarEquipo} />
+          <FormView bodega={bodegaFiltro} onGuardar={guardarEquipo} />
         </div>
 
         <div hidden={tabActiva !== 'list'} className="space-y-3">
